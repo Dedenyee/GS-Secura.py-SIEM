@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+.DS_Store
+.vscode/
+.idea/
+saida/*.json
+!saida/.gitkeep
+ml/modelo.pkl

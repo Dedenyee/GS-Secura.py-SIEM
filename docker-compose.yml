@@ -1,0 +1,34 @@
+# docker-compose.yml — sobe a API junto com MongoDB e MySQL (Modulo F)
+#
+# Como testar:
+#   docker-compose up -d
+#   python verificar_containers.py
+
+services:
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=senha
+      - MYSQL_DATABASE=securapy
+      - SECURAPY_TOKEN=segredo123
+    depends_on:
+      - mongo
+      - mysql
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+
+  mysql:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=senha
+      - MYSQL_DATABASE=securapy
+    ports:
+      - "3306:3306"
