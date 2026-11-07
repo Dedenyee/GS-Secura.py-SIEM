@@ -6,10 +6,10 @@ dados (MongoDB + MySQL), machine learning, dashboard web, LLM e Docker.
 
 ## Integrantes
 
-- Pessoa A — Núcleo + Persistência (Módulos A, B)
-- Pessoa B — Machine Learning (Módulo C)
+- **Pessoa A — Marcos — Núcleo + Persistência (Módulos A, B)**
+- **Pessoa B — Guilherme — Machine Learning (Módulo C)**
 - **Pessoa C — Vinicius — API + Docker (Módulos D, F)**
-- Pessoa D — Web + LLM (Módulos E, G)
+- **Pessoa D — Lucas — Web + LLM (Módulos E, G)**
 
 ## Arquitetura
 
