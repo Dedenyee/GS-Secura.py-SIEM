@@ -115,3 +115,15 @@ def test_ameacas_e_score_ml(db):
 def test_mongo_indisponivel_erro_tratado():
     with pytest.raises(mongo_repo.MongoRepoErro):
         mongo_repo.conectar(uri="mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=200")
+
+
+def test_exercicio_2_2_top_ips_por_falhas(db_populado):
+    top = mongo_repo.top_ips_por_falhas(5, db=db_populado)
+    assert [(t["ip"], t["total"]) for t in top] == [("185.220.101.1", 11), ("91.240.118.172", 5)]
+
+
+def test_exercicio_2_3_consultar(db_populado):
+    falhas = mongo_repo.consultar(tipo="FAIL", ip="185.220.101.1", db=db_populado)
+    assert len(falhas) == 11 and all(e["tipo"] == "FAIL" for e in falhas)
+    assert len(mongo_repo.consultar(fonte="auth", db=db_populado)) == 17
+    assert len(mongo_repo.consultar(fonte="firewall", desde="2025-02-20 08:10:04", db=db_populado)) == 3

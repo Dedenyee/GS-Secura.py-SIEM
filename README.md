@@ -118,12 +118,23 @@ Versão final de `db/`, substituindo a provisória. **Mantém os mesmos nomes de
 - Senhas com PBKDF2-SHA256 e salt. A resposta é igual para usuário inexistente e para senha errada.
 - `autenticar(email, senha)` e `tem_permissao(usuario, "analisar_logs")`.
 
+**De onde vem cada parte (apostila do 2º semestre):**
+
+| Aula | Onde aparece |
+|---|---|
+| 1. SQL × NoSQL, CAP | MongoDB para eventos (volume/schema flexível), MySQL para usuários (integridade/ACID) |
+| 2. PyMongo | `MongoClient` + `ping`, `insert_many`, `find().sort()`, `create_index` (simples, composto, TTL), pipeline `$match/$group/$sort/$limit` (`top_ips_por_falhas`, Exerc. 2.2), filtro dinâmico `consultar()` (Exerc. 2.3) |
+| 3. MySQL | conectar → `cursor(dictionary=True)` → `execute(sql, (params,))` → `commit`/`rollback` → `close`; `executemany` (`inserir_usuarios_lote`); CRUD do Exerc. 3.1; prova do Exerc. 3.2 na demo |
+| 7. Flask + banco | paginação `skip/limit`, `ObjectId`/`InvalidId`, `IntegrityError` → email duplicado (409) |
+| 8. OWASP | Injection (A05), senha com hash e login genérico (A07), segredos em variável de ambiente (A02) |
+| 1º sem., Aula 11 | `hashlib` para o hash das senhas e para a chave de deduplicação |
+
 **Scripts:**
 
 ```bash
 python -m scripts.migrar_logs --limpar   # ingestão inicial: logs -> núcleo -> MongoDB
 python -m scripts.usuarios init          # cria a tabela usuarios (+ admin, se ADMIN_EMAIL/ADMIN_SENHA)
-python -m scripts.usuarios demo          # demonstra email duplicado e SQL injection
+python -m scripts.usuarios demo          # roteiro do vídeo: Exerc. 3.1, B3 (email duplicado) e B4 / Exerc. 3.2 (SQL injection)
 ```
 
 **Testes**, sem precisar de banco rodando:

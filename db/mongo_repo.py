@@ -1,22 +1,34 @@
 """
-db/mongo_repo.py — Repositorio de eventos, alertas e ameacas no MongoDB (Aulas 1-2)
+db/mongo_repo.py — Eventos, alertas e ameacas no MongoDB
+Modulo B da GS — baseado nas Aulas 1, 2 e 7 da apostila do 2º semestre.
 
-Por que MongoDB aqui: eventos e alertas tem alto volume e schema flexivel
-(cada fonte de log traz campos diferentes).
+Por que MongoDB aqui (Aula 1.3/1.4): eventos e alertas tem alto volume e
+schema flexivel (cada fonte de log traz campos diferentes). Pelo Teorema CAP
+(Aula 1.5), coleta de logs pode priorizar disponibilidade.
 
-Colecoes:
-    eventos  — eventos normalizados do coletor
+Colecoes (banco -> colecoes -> documentos, Aula 2.1):
+    eventos  — eventos normalizados do coletor (1º semestre)
     alertas  — alertas do motor de regras (e os criados via API)
     ameacas  — resumo por IP do detector (+ score de ML, quando houver)
 
-Decisoes:
-    - Ingestao IDEMPOTENTE: cada evento/alerta recebe uma "chave" SHA-256 do
-      seu conteudo (indice unico). Rodar a migracao 2x NAO duplica dados.
-    - "timestamp" eh gravado como datetime (permite filtro por periodo) e
+O que vem de cada aula:
+    - Conexao com MongoClient + ping, string em variavel de ambiente (Aula 2.2)
+    - CRUD: insert_many, insert_one, find, find_one, update_one, delete_many,
+      count_documents (Aula 2.3)
+    - Indices simples, compostos e TTL (Aula 2.4)
+    - Aggregation pipeline $match -> $group -> $sort -> $limit (Aula 2.5)
+    - Filtro montado dinamicamente so com os parametros informados (Exerc. 2.3)
+    - Paginacao com skip/limit e serializacao de ObjectId (Aula 7.2)
+    - ObjectId invalido tratado com InvalidId (Aula 7.2)
+
+Decisoes extras:
+    - Ingestao IDEMPOTENTE: cada evento/alerta recebe uma "chave" SHA-256
+      (hashlib, 1º sem.) com indice unico. Rodar a migracao 2x NAO duplica.
+    - "timestamp" eh gravado como datetime (filtro por periodo funciona) e
       devolvido como string "AAAA-MM-DD HH:MM:SS" (mesmo contrato do nucleo).
-    - Filtros so aceitam str/int: um valor vindo da API como {"$ne": ""}
-      eh rejeitado (defesa contra NoSQL injection).
-    - Configuracao via variaveis de ambiente: MONGO_URI, MONGO_DB, MONGO_TTL_DIAS.
+    - Filtros so aceitam texto simples: {"$ne": ""} vindo da API eh rejeitado
+      (NoSQL injection — a "SQL injection" do MongoDB, OWASP A05).
+    - Variaveis de ambiente: MONGO_URL (ou MONGO_URI), MONGO_DB, MONGO_TTL_DIAS.
 """
 
 import hashlib
@@ -413,9 +425,51 @@ def resumo_ip(ip, db=None):
     }
 
 
+def consultar(fonte=None, tipo=None, ip=None, desde=None, db=None):
+    """Exercicio 2.3 da apostila: filtro dinamico, so com os parametros != None,
+    resultado ordenado por timestamp.
+
+        consultar(tipo="FAIL", ip="185.220.101.1")  -> so as falhas desse IP
+        consultar(fonte="auth")                     -> todos os eventos de auth
+    """
+    db = _resolver(db)
+    filtro = {}
+    if fonte is not None:
+        filtro["fonte"] = _texto(fonte, "fonte")
+    if tipo is not None:
+        filtro["tipo"] = _texto(tipo, "tipo").upper()
+    if ip is not None:
+        filtro["ip"] = _texto(ip, "ip")
+    if desde is not None:
+        inicio = _para_datetime(desde)
+        if inicio is None:
+            raise FiltroInvalidoError("desde deve ter formato AAAA-MM-DD HH:MM:SS")
+        filtro["timestamp"] = {"$gte": inicio}
+    return [_doc_para_dict(d) for d in db.eventos.find(filtro).sort("timestamp", ASCENDING)]
+
+
 # ============================================================
-# Agregacoes (Aula 2)
+# Agregacoes (Aula 2.5 — aggregation pipeline)
 # ============================================================
+
+def top_ips_por_falhas(limite=5, db=None):
+    """Exercicio 2.2 da apostila: IPs com mais falhas de login.
+
+    Pipeline: $match tipo=FAIL -> $group por ip -> $sort desc -> $limit
+    (equivale a SELECT ip, COUNT(*) ... WHERE tipo='FAIL' GROUP BY ip ORDER BY ... LIMIT)
+    """
+    db = _resolver(db)
+    pipeline = [
+        {"$match": {"fonte": "auth", "tipo": "FAIL"}},
+        {"$group": {"_id": "$ip", "total": {"$sum": 1}}},
+        {"$sort": {"total": -1, "_id": 1}},
+        {"$limit": int(limite)},
+    ]
+    try:
+        return [{"ip": linha["_id"], "total": linha["total"]} for linha in db.eventos.aggregate(pipeline)]
+    except PyMongoError as erro:
+        raise MongoRepoErro("Falha na agregacao de falhas") from erro
+
 
 def top_ips(limite=5, colecao="eventos", db=None):
     """Top N IPs por quantidade de documentos. Retorna [{"ip":..., "total":...}]."""
