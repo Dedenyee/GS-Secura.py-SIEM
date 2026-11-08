@@ -96,3 +96,39 @@ curl -X POST "http://localhost:5000/api/alertas" \
 - `alertas/cliente_alertas.py` — cliente console para o servidor de alertas
 - `logs/` — dados de teste (auth, firewall, web)
 - `config/regras.json` — regras configuráveis
+
+## Persistência — MongoDB + MySQL (Módulo B, Pessoa A)
+
+Versão final de `db/`, substituindo a provisória. **Mantém os mesmos nomes de função que `api/app.py` já chama**, então a API não precisa mudar.
+
+**MongoDB (`db/mongo_repo.py`)** guarda eventos, alertas e ameaças (resumo por IP, onde o ML grava o `score_risco`).
+- Índices em `ip`, `timestamp`, `ip+timestamp`, `fonte+tipo` e `severidade`. TTL opcional via `MONGO_TTL_DIAS`.
+- Ingestão **idempotente**: cada documento tem uma `chave` SHA-256 com índice único. Rodar a análise 2x não duplica.
+- Filtros por fonte, tipo, IP e período (`inicio`/`fim`), com paginação.
+  - `buscar_eventos` e `buscar_alertas` devolvem lista, como a API espera.
+  - `buscar_eventos_paginado` e `buscar_alertas_paginado` devolvem também o `total`.
+- Agregações: `top_ips`, `contagem_por_severidade`, `contagem_por_fonte` e `estatisticas()` (para o dashboard).
+- Defesa contra NoSQL injection: os filtros só aceitam texto simples (`{"$ne": ""}` levanta `FiltroInvalidoError`).
+- Erros de banco viram `MongoRepoErro`, sem vazar detalhes.
+
+**MySQL (`db/mysql_repo.py`)** guarda os usuários (operadores) da plataforma.
+- CRUD completo: `criar_usuario`, `buscar_usuario_por_id`/`_por_email`, `listar_usuarios`, `atualizar_usuario`, `remover_usuario`.
+- **Todas as queries são parametrizadas** (`%s`): `' OR '1'='1` no login não passa.
+- Email `UNIQUE` (`EmailDuplicadoError`, tratado) e `nivel_acesso` de 1 a 5 (`CHECK`).
+- Senhas com PBKDF2-SHA256 e salt. A resposta é igual para usuário inexistente e para senha errada.
+- `autenticar(email, senha)` e `tem_permissao(usuario, "analisar_logs")`.
+
+**Scripts:**
+
+```bash
+python -m scripts.migrar_logs --limpar   # ingestão inicial: logs -> núcleo -> MongoDB
+python -m scripts.usuarios init          # cria a tabela usuarios (+ admin, se ADMIN_EMAIL/ADMIN_SENHA)
+python -m scripts.usuarios demo          # demonstra email duplicado e SQL injection
+```
+
+**Testes**, sem precisar de banco rodando:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
