@@ -97,6 +97,34 @@ curl -X POST "http://localhost:5000/api/alertas" \
 - `logs/` — dados de teste (auth, firewall, web)
 - `config/regras.json` — regras configuráveis
 
+## Núcleo integrado (Módulo A, Pessoa A)
+
+O núcleo do 1º semestre foi integrado à nova arquitetura mantendo **as mesmas funções e o mesmo formato de evento/alerta**, então `api/app.py` usa o núcleo sem nenhuma alteração.
+
+- **Mesmo comportamento do 1º semestre:** os testes originais do professor (`tests/test_1sem_*.py`) rodam sem mudança de lógica, só com os imports ajustados para `core.` e `alertas.`.
+- **Estruturas de dados (Aula 7 do 1º sem.):**
+  - `dict` para contar falhas por IP;
+  - `set` para usuários tentados, portas distintas e blacklist (interseção `&`);
+  - tupla no retorno de `verificar_blacklist`.
+- **Tratamento de erros (Aula 8 do 1º sem.):** log inexistente ou linha malformada não travam a ingestão (aviso e segue).
+- **Novidades:**
+  - `core/pipeline.py`: roda coletor + regras + detector numa chamada só (`processar_logs()`).
+  - `servidor_alertas.iniciar_em_background()`: a API/pipeline pode transmitir alertas críticos em tempo real.
+  - Bônus de **correlação temporal**: `detectar_brute_force_janela()` conta brute force dentro de uma janela de tempo.
+
+| # | Cenário | Resultado |
+|---|---|---|
+| A1 | Carregar os 3 logs | 58 eventos: auth 23, firewall 17, web 18 |
+| A2 | Brute force no `auth.log` | `185.220.101.1` com 11 FAILs, **ALTA** (o enunciado diz 10, mas o log tem 11, e o teste do professor espera 11) |
+| A3 | Port scan no `firewall.log` | `185.220.101.1` com 7 portas distintas |
+| A4 | Cruzar com blacklist | {185.220.101.1, 45.33.32.156, 91.240.118.172} |
+
+```bash
+python main.py              # mostra A1-A4
+python main.py --servidor   # sobe o servidor de alertas e transmite os CRITICOS/ALTOS
+python -m alertas.cliente_alertas   # em 2 outros terminais (consoles)
+```
+
 ## Persistência — MongoDB + MySQL (Módulo B, Pessoa A)
 
 Versão final de `db/`, substituindo a provisória. **Mantém os mesmos nomes de função que `api/app.py` já chama**, então a API não precisa mudar.
