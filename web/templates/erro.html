@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Erro {{ codigo }}{% endblock %}
+{% set corpo %}
+  <section class="entrada">
+    <h1>{{ codigo }}</h1>
+    <p class="sub">{{ mensagem }}</p>
+    {% if session.usuario %}
+      <p><a href="{{ url_for('web.painel') }}">Voltar à visão geral</a></p>
+    {% else %}
+      <p><a href="{{ url_for('web.login') }}">Ir para o login</a></p>
+    {% endif %}
+  </section>
+{% endset %}
+{% block conteudo %}{{ corpo }}{% endblock %}
+{% block conteudo_publico %}{{ corpo }}{% endblock %}

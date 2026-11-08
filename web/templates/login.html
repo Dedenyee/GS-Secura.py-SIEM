@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titulo %}Entrar{% endblock %}
+{% block conteudo_publico %}
+<section class="entrada">
+  <h1>SecuraPy</h1>
+  <p class="sub">Painel de monitoramento de segurança. Entre com sua conta de operador.</p>
+
+  {% if erro %}<p class="erro" role="alert">{{ erro }}</p>{% endif %}
+
+  <form action="{{ url_for('web.login') }}" method="post" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" maxlength="254" required value="{{ email }}">
+    <label for="senha">Senha</label>
+    <input id="senha" name="senha" type="password" maxlength="128" required>
+    <button type="submit">Entrar</button>
+  </form>
+</section>
+{% endblock %}

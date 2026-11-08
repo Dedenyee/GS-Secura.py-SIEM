@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}IP {{ dados.ip }}{% endblock %}
+{% block conteudo %}
+<header class="topo">
+  <h1><span class="ip">{{ dados.ip }}</span></h1>
+  <p class="resumo-topo">
+    Triagem do assistente:
+    <span class="selo rot-{{ rotulo_ip|replace('Í','I')|lower }}">{{ rotulo_ip }}</span>
+  </p>
+</header>
+
+<div class="duas-colunas">
+  <section aria-labelledby="t-score">
+    <h2 id="t-score">Risco estimado pelo modelo</h2>
+    {% if dados.score is not none %}
+      <p class="grande">{{ (dados.score * 100)|round|int }}<span class="unidade"> de 100</span></p>
+      <svg class="barra" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+        <rect width="100" height="4" class="fundo"></rect>
+        <rect width="{{ (dados.score * 100)|round(1) }}" height="4" class="valor {{ 'alto' if dados.score >= 0.7 else '' }}"></rect>
+      </svg>
+    {% else %}
+      <p class="vazio">O modelo de ML ainda não pontuou este IP.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="t-geo">
+    <h2 id="t-geo">Localização</h2>
+    {% if dados.geo %}
+      <dl class="geo">
+        {% for chave, valor in dados.geo.items() %}
+          <dt>{{ chave }}</dt><dd>{{ valor }}</dd>
+        {% endfor %}
+      </dl>
+    {% else %}
+      <p class="vazio">Sem dados de geolocalização para este IP.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section aria-labelledby="t-alertas">
+  <h2 id="t-alertas">Alertas e explicação do assistente</h2>
+  {% if alertas_triados %}
+  <ul class="triagem">
+    {% for alerta, triagem in alertas_triados %}
+    <li>
+      <div class="linha-alerta">
+        <span class="selo sev-{{ alerta.severidade }}">{{ rotulo_sev.get(alerta.severidade, alerta.severidade) }}</span>
+        <strong>{{ alerta.tipo }}</strong>
+        <span class="quando">{{ alerta.timestamp }}</span>
+      </div>
+      <p class="descricao">{{ alerta.descricao }}</p>
+      {% if triagem %}
+      <p class="explicacao">
+        <span class="selo rot-{{ triagem.rotulo|replace('Í','I')|lower }}">{{ triagem.rotulo }}</span>
+        {{ triagem.explicacao }}
+        <span class="origem">fonte: {{ triagem.origem }}</span>
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    <p class="vazio">Nenhum alerta para este IP.</p>
+  {% endif %}
+  <p class="nota">A classificação do assistente apoia a análise e não dispara nenhuma ação automática.</p>
+</section>
+
+<section aria-labelledby="t-eventos">
+  <h2 id="t-eventos">Eventos ({{ dados.eventos|length }})</h2>
+  {% if dados.eventos %}
+  <div class="rolagem">
+  <table>
+    <thead><tr><th scope="col">Fonte</th><th scope="col">Quando</th><th scope="col">Mensagem</th></tr></thead>
+    <tbody>
+      {% for e in dados.eventos %}
+      <tr><td>{{ e.fonte }}</td><td class="quando">{{ e.timestamp }}</td><td>{{ e.mensagem }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="vazio">Nenhum evento registrado para este IP.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,4 @@
+flask>=3.0
+werkzeug>=3.0
+openai>=1.0      # opcional: sem ele (ou sem OPENAI_API_KEY) o assistente usa o fallback por regras
+pytest>=8.0      # opcional: os testes também rodam com "python -m unittest"

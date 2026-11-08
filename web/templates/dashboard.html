@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block titulo %}Visão geral{% endblock %}
+{% block conteudo %}
+<header class="topo">
+  <h1>Visão geral</h1>
+  <p class="resumo-topo">{{ resumo.total_eventos }} eventos e {{ resumo.total_alertas }} alertas registrados</p>
+</header>
+
+{% if modo_demo %}
+<p class="aviso">Modo demonstração: exibindo dados de exemplo, não os do banco.</p>
+{% endif %}
+
+<section class="faixa" aria-labelledby="t-sev">
+  <h2 id="t-sev">Alertas por severidade</h2>
+  <svg class="faixa-svg" viewBox="0 0 100 8" preserveAspectRatio="none" role="img"
+       aria-label="Distribuição dos alertas por severidade">
+    {% for s in faixa %}{% if s.n %}
+      <rect class="sev-{{ s.sev }}" x="{{ s.x }}" y="0" width="{{ s.largura }}" height="8"></rect>
+    {% endif %}{% endfor %}
+  </svg>
+  <ul class="legenda">
+    {% for s in faixa %}
+      <li><span class="ponto sev-{{ s.sev }}"></span>{{ rotulo_sev[s.sev] }} <strong>{{ s.n }}</strong></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<div class="duas-colunas">
+  <section aria-labelledby="t-fonte">
+    <h2 id="t-fonte">Eventos por fonte</h2>
+    {% if barras_fonte %}
+    <ul class="barras">
+      {% for b in barras_fonte %}
+      <li>
+        <span class="rotulo">{{ b.nome }}</span>
+        <svg class="barra" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+          <rect width="100" height="4" class="fundo"></rect>
+          <rect width="{{ b.pct }}" height="4" class="valor"></rect>
+        </svg>
+        <span class="num">{{ b.total }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="vazio">Ainda não há eventos. Envie um log para análise em <code>POST /api/analisar</code>.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="t-ips">
+    <h2 id="t-ips">IPs mais suspeitos</h2>
+    {% if resumo.top_ips %}
+    <table>
+      <thead><tr><th scope="col">IP</th><th scope="col" class="n">Eventos</th><th scope="col" class="n">Alertas</th></tr></thead>
+      <tbody>
+        {% for item in resumo.top_ips %}
+        <tr>
+          <td><a class="ip" href="{{ url_for('web.pagina_ip', ip=item.ip) }}">{{ item.ip }}</a></td>
+          <td class="n">{{ item.eventos }}</td>
+          <td class="n">{{ item.alertas if item.alertas is defined else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="vazio">Nenhum IP registrado ainda.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section aria-labelledby="t-rec">
+  <h2 id="t-rec">Alertas recentes</h2>
+  {% if resumo.alertas_recentes %}
+  <div class="rolagem">
+  <table>
+    <thead><tr><th scope="col">Severidade</th><th scope="col">Tipo</th><th scope="col">IP</th><th scope="col">Descrição</th><th scope="col">Quando</th></tr></thead>
+    <tbody>
+      {% for a in resumo.alertas_recentes %}
+      <tr>
+        <td><span class="selo sev-{{ a.severidade }}">{{ rotulo_sev.get(a.severidade, a.severidade) }}</span></td>
+        <td>{{ a.tipo }}</td>
+        <td><a class="ip" href="{{ url_for('web.pagina_ip', ip=a.ip) }}">{{ a.ip }}</a></td>
+        <td>{{ a.descricao }}</td>
+        <td class="quando">{{ a.timestamp }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="vazio">Nenhum alerta registrado.</p>
+  {% endif %}
+</section>
+{% endblock %}

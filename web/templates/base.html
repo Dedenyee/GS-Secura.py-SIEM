@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Painel{% endblock %} · SecuraPy</title>
+  <link rel="stylesheet" href="{{ url_for('web.static', filename='css/painel.css') }}">
+</head>
+<body>
+{% if session.usuario %}
+<div class="layout">
+  <aside class="trilho">
+    <a class="marca" href="{{ url_for('web.painel') }}">SecuraPy</a>
+
+    <form class="busca" action="{{ url_for('web.buscar_ip') }}" method="get" role="search">
+      <label for="campo-ip">Buscar um IP</label>
+      <input id="campo-ip" name="ip" type="text" maxlength="45" required
+             autocomplete="off" placeholder="185.220.101.1">
+      <button type="submit">Buscar</button>
+      {% if erro_busca %}<p class="erro-busca" role="alert">{{ erro_busca }}</p>{% endif %}
+    </form>
+
+    <nav class="menu" aria-label="Principal">
+      <a href="{{ url_for('web.painel') }}">Visão geral</a>
+    </nav>
+
+    <div class="sessao">
+      <span class="quem">{{ session.usuario.nome }}</span>
+      <span class="nivel">Nível de acesso {{ session.usuario.nivel_acesso }}</span>
+      <form action="{{ url_for('web.logout') }}" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="botao-link">Sair</button>
+      </form>
+    </div>
+  </aside>
+  <main id="conteudo">
+    {% block conteudo %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<main class="solo" id="conteudo">
+  {% block conteudo_publico %}{% endblock %}
+</main>
+{% endif %}
+</body>
+</html>
