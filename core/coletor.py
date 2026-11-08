@@ -1,317 +1,177 @@
 """
-Modulo 1 - Coletor de Logs
-Responsavel por ler arquivos de log de diferentes fontes (auth, firewall, web),
-parsear cada linha e normalizar os eventos em um formato padronizado de dicionario.
+core/coletor.py — Coletor de Logs (reaproveitado do 1º semestre)
 
-Formato padronizado de evento:
+Le os arquivos de log (auth, firewall, web), parseia cada linha e normaliza
+em eventos com formato padronizado (o "contrato" de evento entre os modulos):
+
 {
     "timestamp": "2025-02-20 08:15:01",
     "fonte": "auth",              # auth | firewall | web
     "tipo": "FAIL",               # OK | FAIL | BLOCK | ALLOW | GET | POST | DELETE
     "ip": "185.220.101.1",
-    "detalhes": "usuario=admin",  # informacoes extras dependendo da fonte
-    "linha_original": "..."       # linha crua do log
+    "detalhes": "usuario=admin",
+    "linha_original": "..."
 }
-
-
 """
 
 import os
 
+FONTES_VALIDAS = ("auth", "firewall", "web")
+
+
+def _extrair_campos(partes):
+    """Transforma ['chave=valor', ...] em dict {chave: valor}."""
+    campos = {}
+    for parte in partes:
+        if "=" in parte:
+            chave, valor = parte.split("=", 1)
+            campos[chave] = valor
+    return campos
+
+
+def _cabecalho(linha):
+    """Separa timestamp (data + hora), tipo e o restante da linha.
+
+    Retorna (timestamp, tipo, partes_restantes) ou None se invalida.
+    """
+    if not isinstance(linha, str):
+        return None
+    partes = linha.strip().split()
+    if len(partes) < 4:
+        return None
+    data, hora, tipo = partes[0], partes[1], partes[2]
+    if data.count("-") != 2 or hora.count(":") != 2:
+        return None
+    return f"{data} {hora}", tipo, partes[3:]
+
+
+def _montar_evento(timestamp, fonte, tipo, ip, detalhes, linha):
+    return {
+        "timestamp": timestamp,
+        "fonte": fonte,
+        "tipo": tipo,
+        "ip": ip,
+        "detalhes": detalhes,
+        "linha_original": linha.strip(),
+    }
 
 
 def parsear_linha_auth(linha):
-    """
-    Parseia uma linha do auth.log e retorna um dicionario normalizado.
-
-    Formato esperado:
-        "2025-02-20 08:15:01 FAIL usuario=admin ip=185.220.101.1"
-
-    Retorna dict normalizado ou None se o formato for invalido.
-    """
-    linha = linha.strip()           
-    if not linha:                   # ignora linhas em branco
+    """'2025-02-20 08:15:01 FAIL usuario=admin ip=185.220.101.1' -> evento."""
+    cab = _cabecalho(linha)
+    if cab is None:
         return None
-
-    partes = linha.split()          
-
-    # Precisamos de pelo menos: data hora tipo campo_extra
-    if len(partes) < 4:
+    timestamp, tipo, resto = cab
+    if tipo not in ("OK", "FAIL"):
         return None
-
-    # As duas primeiras partes formam o timestamp 
-    timestamp = partes[0] + " " + partes[1]
-    tipo = partes[2]                # FAIL ou OK
-
-    # Validacao simples do tipo (Aula 4 — condicionais)
-    if tipo not in ("FAIL", "OK"):
+    campos = _extrair_campos(resto)
+    if "ip" not in campos or "usuario" not in campos:
         return None
-
-    # Percorre o restante procurando campos chave=valor 
-    ip = ""
-    usuario = ""
-    for parte in partes[3:]:
-        if "=" in parte:
-            chave, valor = parte.split("=", 1)  # split com limite evita problemas
-            if chave == "ip":
-                ip = valor
-            elif chave == "usuario":
-                usuario = valor
-
-    # Se nao encontrou IP, linha esta incompleta
-    if not ip:
-        return None
-
-    # Monta o dicionario padronizado 
-    evento = {
-        "timestamp": timestamp,
-        "fonte": "auth",
-        "tipo": tipo,
-        "ip": ip,
-        "detalhes": "usuario=" + usuario,
-        "linha_original": linha
-    }
-    return evento
+    return _montar_evento(timestamp, "auth", tipo, campos["ip"],
+                          f"usuario={campos['usuario']}", linha)
 
 
 def parsear_linha_firewall(linha):
-    """
-    Parseia uma linha do firewall.log e retorna um dicionario normalizado.
-
-    Formato esperado:
-        "2025-02-20 08:10:02 BLOCK proto=TCP src=185.220.101.1 dst=10.0.0.1 dport=22"
-
-    Retorna dict normalizado ou None se o formato for invalido.
-    """
-    linha = linha.strip()
-    if not linha:
+    """'... BLOCK proto=TCP src=1.2.3.4 dst=10.0.0.1 dport=22' -> evento (ip = src)."""
+    cab = _cabecalho(linha)
+    if cab is None:
         return None
-
-    partes = linha.split()
-
-    if len(partes) < 4:
-        return None
-
-    timestamp = partes[0] + " " + partes[1]
-    tipo = partes[2]                # BLOCK ou ALLOW
-
+    timestamp, tipo, resto = cab
     if tipo not in ("BLOCK", "ALLOW"):
         return None
-
-    # Percorre campos chave=valor
-    ip_origem = ""
-    proto = ""
-    dst = ""
-    dport = ""
-    for parte in partes[3:]:
-        if "=" in parte:
-            chave, valor = parte.split("=", 1)
-            if chave == "src":
-                ip_origem = valor
-            elif chave == "proto":
-                proto = valor
-            elif chave == "dst":
-                dst = valor
-            elif chave == "dport":
-                dport = valor
-
-    if not ip_origem:
+    campos = _extrair_campos(resto)
+    if not {"src", "dst", "dport"} <= campos.keys():
         return None
-
-    # Campo detalhes agrupa info relevante do firewall
-    detalhes = "proto=" + proto + " dst=" + dst + " dport=" + dport
-
-    evento = {
-        "timestamp": timestamp,
-        "fonte": "firewall",
-        "tipo": tipo,
-        "ip": ip_origem,
-        "detalhes": detalhes,
-        "linha_original": linha
-    }
-    return evento
+    detalhes = f"proto={campos.get('proto', '?')} dst={campos['dst']} dport={campos['dport']}"
+    return _montar_evento(timestamp, "firewall", tipo, campos["src"], detalhes, linha)
 
 
 def parsear_linha_web(linha):
+    """'... GET url=/index.html ip=192.168.1.10 status=200' -> evento.
+
+    A URL pode conter espacos/caracteres especiais (ex: <script>), entao
+    tudo entre 'url=' e ' ip=' eh considerado URL.
     """
-    Parseia uma linha do web_access.log e retorna um dicionario normalizado.
-
-    Formato esperado:
-        "2025-02-20 08:20:01 GET url=/index.html ip=192.168.1.10 status=200"
-
-    Retorna dict normalizado ou None se o formato for invalido.
-
-    Atencao: a URL pode conter caracteres especiais (<script>, ../).
-    Usamos split() com limite para nao quebrar a URL no meio.
-    """
-    linha = linha.strip()
-    if not linha:
+    cab = _cabecalho(linha)
+    if cab is None:
         return None
-
-    partes = linha.split()
-
-    if len(partes) < 4:
+    timestamp, metodo, resto = cab
+    if not metodo.isalpha() or not metodo.isupper():
         return None
-
-    timestamp = partes[0] + " " + partes[1]
-    metodo = partes[2]              # GET, POST, DELETE, etc.
-
-    ip = ""
-    url = ""
-    status = ""
-    for parte in partes[3:]:
-        if "=" in parte:
-            chave, valor = parte.split("=", 1)  # limite 1 preserva URLs com "="
-            if chave == "ip":
-                ip = valor
-            elif chave == "url":
-                url = valor
-            elif chave == "status":
-                status = valor
-
-    if not ip:
+    texto = " ".join(resto)
+    if not texto.startswith("url=") or " ip=" not in texto:
         return None
-
-    detalhes = "url=" + url + " status=" + status
-
-    evento = {
-        "timestamp": timestamp,
-        "fonte": "web",
-        "tipo": metodo,
-        "ip": ip,
-        "detalhes": detalhes,
-        "linha_original": linha
-    }
-    return evento
+    url, depois = texto[4:].rsplit(" ip=", 1)
+    campos = _extrair_campos(depois.split())
+    ip = depois.split()[0] if depois.split() else ""
+    if not ip or "status" not in campos:
+        return None
+    return _montar_evento(timestamp, "web", metodo, ip,
+                          f"url={url} status={campos['status']}", linha)
 
 
-
-# FUNCOES DE CARREGAMENTO
+PARSERS = {
+    "auth": parsear_linha_auth,
+    "firewall": parsear_linha_firewall,
+    "web": parsear_linha_web,
+}
 
 
 def carregar_log(caminho_arquivo, fonte):
+    """Le um arquivo de log e retorna lista de eventos normalizados.
+
+    Arquivo inexistente -> []. Linha malformada -> aviso e segue (nao trava).
     """
-    Le um arquivo de log e retorna lista de eventos normalizados.
-
-    Parametros:
-        caminho_arquivo (str): caminho do arquivo
-        fonte (str): "auth", "firewall" ou "web"
-
-    Retorna:
-        list[dict] — lista de eventos; lista vazia em caso de erro.
-
-    """
-    eventos = []    # lista que acumula os eventos
-
-    try:                            # tratamento de excecoes
-        with open(caminho_arquivo, "r", encoding="utf-8") as arquivo:   # Aula 12
-            linhas = arquivo.readlines()
-
-        # Arquivo vazio 
-        if len(linhas) == 0:
-            print("[AVISO] Arquivo vazio:", caminho_arquivo)
-            return []
-
-        numero = 0
-        for linha in linhas:      
-            numero += 1
-            linha = linha.strip()
-            if not linha:           # pula linhas em branco silenciosamente
-                continue
-
-            # Escolhe o parser correto baseado na fonte 
-            if fonte == "auth":
-                evento = parsear_linha_auth(linha)
-            elif fonte == "firewall":
-                evento = parsear_linha_firewall(linha)
-            elif fonte == "web":
-                evento = parsear_linha_web(linha)
-            else:
-                print("[ERRO] Fonte desconhecida:", fonte)
-                return []
-
-            # Se o parser retornou None, a linha estava mal formatada
-            if evento is None:
-                print("[AVISO] Linha " + str(numero) + " ignorada (formato invalido): " + linha)
-            else:
-                eventos.append(evento)  #append na lista
-
-    except FileNotFoundError:       # tratamento de excecoes
-        print("[ERRO] Arquivo nao encontrado:", caminho_arquivo)
-        return []
-    except Exception as erro:       # tratamento de excecoes
-        print("[ERRO] Falha ao ler arquivo:", str(erro))
+    parser = PARSERS.get(fonte)
+    if parser is None:
+        print(f"[ERRO] Fonte desconhecida: {fonte}")
         return []
 
+    eventos = []
+    try:
+        with open(caminho_arquivo, "r", encoding="utf-8", errors="replace") as f:
+            for numero, linha in enumerate(f, start=1):
+                if not linha.strip():
+                    continue
+                evento = parser(linha)
+                if evento is None:
+                    print(f"[AVISO] {os.path.basename(caminho_arquivo)}:{numero} linha invalida ignorada")
+                    continue
+                eventos.append(evento)
+    except FileNotFoundError:
+        print(f"[ERRO] Arquivo nao encontrado: {caminho_arquivo}")
+        return []
+    except OSError as erro:
+        print(f"[ERRO] Falha ao ler {caminho_arquivo}: {erro}")
+        return []
     return eventos
 
 
+def identificar_fonte(nome_arquivo):
+    """auth.log -> 'auth', firewall.log -> 'firewall', web_access.log -> 'web'."""
+    for fonte in FONTES_VALIDAS:
+        if fonte in nome_arquivo:
+            return fonte
+    return None
+
+
 def carregar_todos_os_logs(pasta_logs):
-    """
-    Le todos os arquivos .log da pasta e retorna lista unificada de eventos.
-
-    Parametros:
-        pasta_logs (str): caminho da pasta com os logs
-
-    Retorna:
-        list[dict] — eventos de todas as fontes combinados.
-
-    """
-    todos_eventos = []  # lista que vai acumular tudo
-
+    """Le todos os .log da pasta e retorna lista unificada de eventos."""
     try:
-        arquivos = os.listdir(pasta_logs)   
-    except FileNotFoundError:
-        print("[ERRO] Pasta de logs nao encontrada:", pasta_logs)
+        arquivos = sorted(os.listdir(pasta_logs))
+    except (FileNotFoundError, NotADirectoryError):
+        print(f"[ERRO] Pasta de logs nao encontrada: {pasta_logs}")
         return []
 
-    for arquivo in arquivos:        
-        
+    todos = []
+    for arquivo in arquivos:
         if not arquivo.endswith(".log"):
             continue
-
-        # Identifica a fonte pelo nome do arquivo
-        if "auth" in arquivo:
-            fonte = "auth"
-        elif "firewall" in arquivo:
-            fonte = "firewall"
-        elif "web" in arquivo:
-            fonte = "web"
-        else:
-            print("[AVISO] Arquivo sem fonte reconhecida, ignorado:", arquivo)
+        fonte = identificar_fonte(arquivo)
+        if fonte is None:
+            print(f"[AVISO] Fonte nao identificada para {arquivo}, ignorando")
             continue
-
-        caminho_completo = os.path.join(pasta_logs, arquivo)   
-        eventos = carregar_log(caminho_completo, fonte)
-
-        print("[OK] " + arquivo + " — " + str(len(eventos)) + " eventos carregados")
-
-        #extend adiciona todos os eventos da lista parcial na principal
-        todos_eventos.extend(eventos)
-
-    return todos_eventos
-
-
-# BLOCO DE TESTE RAPIDO (executado apenas ao rodar este arquivo diretamente)
-
-if __name__ == "__main__":
-    print("=" * 50)
-    print("TESTE DO MODULO COLETOR")
-    print("=" * 50)
-
-    # Teste 1: carregar um arquivo especifico
-    print("\n[TESTE 1] Carregando auth.log...")
-    eventos_auth = carregar_log("logs/auth.log", "auth")
-    print("Total de eventos:", len(eventos_auth))
-    if eventos_auth:
-        print("Primeiro evento:", eventos_auth[0])
-
-    # Teste 2: arquivo inexistente
-    print("\n[TESTE 2] Tentando arquivo inexistente...")
-    resultado = carregar_log("logs/naoexiste.log", "auth")
-    print("Retornou lista vazia?", resultado == [])
-
-    # Teste 3: todos os logs
-    print("\n[TESTE 3] Carregando todos os logs...")
-    todos = carregar_todos_os_logs("logs")
-    print("Total geral de eventos:", len(todos))
+        eventos = carregar_log(os.path.join(pasta_logs, arquivo), fonte)
+        print(f"[INFO] {arquivo}: {len(eventos)} eventos carregados")
+        todos.extend(eventos)
+    return todos

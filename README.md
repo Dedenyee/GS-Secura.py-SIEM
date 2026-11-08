@@ -96,3 +96,78 @@ curl -X POST "http://localhost:5000/api/alertas" \
 - `alertas/cliente_alertas.py` — cliente console para o servidor de alertas
 - `logs/` — dados de teste (auth, firewall, web)
 - `config/regras.json` — regras configuráveis
+
+## Núcleo integrado (Módulo A, Pessoa A)
+
+O núcleo do 1º semestre foi integrado à nova arquitetura mantendo **as mesmas funções e o mesmo formato de evento/alerta**, então `api/app.py` usa o núcleo sem nenhuma alteração.
+
+- **Mesmo comportamento do 1º semestre:** os testes originais do professor (`tests/test_1sem_*.py`) rodam sem mudança de lógica, só com os imports ajustados para `core.` e `alertas.`.
+- **Estruturas de dados (Aula 7 do 1º sem.):**
+  - `dict` para contar falhas por IP;
+  - `set` para usuários tentados, portas distintas e blacklist (interseção `&`);
+  - tupla no retorno de `verificar_blacklist`.
+- **Tratamento de erros (Aula 8 do 1º sem.):** log inexistente ou linha malformada não travam a ingestão (aviso e segue).
+- **Novidades:**
+  - `core/pipeline.py`: roda coletor + regras + detector numa chamada só (`processar_logs()`).
+  - `servidor_alertas.iniciar_em_background()`: a API/pipeline pode transmitir alertas críticos em tempo real.
+  - Bônus de **correlação temporal**: `detectar_brute_force_janela()` conta brute force dentro de uma janela de tempo.
+
+| # | Cenário | Resultado |
+|---|---|---|
+| A1 | Carregar os 3 logs | 58 eventos: auth 23, firewall 17, web 18 |
+| A2 | Brute force no `auth.log` | `185.220.101.1` com 11 FAILs, **ALTA** (o enunciado diz 10, mas o log tem 11, e o teste do professor espera 11) |
+| A3 | Port scan no `firewall.log` | `185.220.101.1` com 7 portas distintas |
+| A4 | Cruzar com blacklist | {185.220.101.1, 45.33.32.156, 91.240.118.172} |
+
+```bash
+python main.py              # mostra A1-A4
+python main.py --servidor   # sobe o servidor de alertas e transmite os CRITICOS/ALTOS
+python -m alertas.cliente_alertas   # em 2 outros terminais (consoles)
+```
+
+## Persistência — MongoDB + MySQL (Módulo B, Pessoa A)
+
+Versão final de `db/`, substituindo a provisória. **Mantém os mesmos nomes de função que `api/app.py` já chama**, então a API não precisa mudar.
+
+**MongoDB (`db/mongo_repo.py`)** guarda eventos, alertas e ameaças (resumo por IP, onde o ML grava o `score_risco`).
+- Índices em `ip`, `timestamp`, `ip+timestamp`, `fonte+tipo` e `severidade`. TTL opcional via `MONGO_TTL_DIAS`.
+- Ingestão **idempotente**: cada documento tem uma `chave` SHA-256 com índice único. Rodar a análise 2x não duplica.
+- Filtros por fonte, tipo, IP e período (`inicio`/`fim`), com paginação.
+  - `buscar_eventos` e `buscar_alertas` devolvem lista, como a API espera.
+  - `buscar_eventos_paginado` e `buscar_alertas_paginado` devolvem também o `total`.
+- Agregações: `top_ips`, `contagem_por_severidade`, `contagem_por_fonte` e `estatisticas()` (para o dashboard).
+- Defesa contra NoSQL injection: os filtros só aceitam texto simples (`{"$ne": ""}` levanta `FiltroInvalidoError`).
+- Erros de banco viram `MongoRepoErro`, sem vazar detalhes.
+
+**MySQL (`db/mysql_repo.py`)** guarda os usuários (operadores) da plataforma.
+- CRUD completo: `criar_usuario`, `buscar_usuario_por_id`/`_por_email`, `listar_usuarios`, `atualizar_usuario`, `remover_usuario`.
+- **Todas as queries são parametrizadas** (`%s`): `' OR '1'='1` no login não passa.
+- Email `UNIQUE` (`EmailDuplicadoError`, tratado) e `nivel_acesso` de 1 a 5 (`CHECK`).
+- Senhas com PBKDF2-SHA256 e salt. A resposta é igual para usuário inexistente e para senha errada.
+- `autenticar(email, senha)` e `tem_permissao(usuario, "analisar_logs")`.
+
+**De onde vem cada parte (apostila do 2º semestre):**
+
+| Aula | Onde aparece |
+|---|---|
+| 1. SQL × NoSQL, CAP | MongoDB para eventos (volume/schema flexível), MySQL para usuários (integridade/ACID) |
+| 2. PyMongo | `MongoClient` + `ping`, `insert_many`, `find().sort()`, `create_index` (simples, composto, TTL), pipeline `$match/$group/$sort/$limit` (`top_ips_por_falhas`, Exerc. 2.2), filtro dinâmico `consultar()` (Exerc. 2.3) |
+| 3. MySQL | conectar → `cursor(dictionary=True)` → `execute(sql, (params,))` → `commit`/`rollback` → `close`; `executemany` (`inserir_usuarios_lote`); CRUD do Exerc. 3.1; prova do Exerc. 3.2 na demo |
+| 7. Flask + banco | paginação `skip/limit`, `ObjectId`/`InvalidId`, `IntegrityError` → email duplicado (409) |
+| 8. OWASP | Injection (A05), senha com hash e login genérico (A07), segredos em variável de ambiente (A02) |
+| 1º sem., Aula 11 | `hashlib` para o hash das senhas e para a chave de deduplicação |
+
+**Scripts:**
+
+```bash
+python -m scripts.migrar_logs --limpar   # ingestão inicial: logs -> núcleo -> MongoDB
+python -m scripts.usuarios init          # cria a tabela usuarios (+ admin, se ADMIN_EMAIL/ADMIN_SENHA)
+python -m scripts.usuarios demo          # roteiro do vídeo: Exerc. 3.1, B3 (email duplicado) e B4 / Exerc. 3.2 (SQL injection)
+```
+
+**Testes**, sem precisar de banco rodando:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
