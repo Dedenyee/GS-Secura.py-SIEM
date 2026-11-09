@@ -1,0 +1,44 @@
+============================================================
+AVALIACAO DO MODELO (dados sinteticos, seed 42)
+============================================================
+Amostras: 800 | ataques: 345 | normais: 455
+
+Validacao cruzada estratificada (5 folds):
+  precision : 0.980 +/- 0.012
+  recall    : 0.974 +/- 0.014
+  f1        : 0.977 +/- 0.012
+
+Holdout 80/20:
+              precision    recall  f1-score   support
+
+      normal      0.978     0.978     0.978        91
+      ataque      0.971     0.971     0.971        69
+
+    accuracy                          0.975       160
+   macro avg      0.975     0.975     0.975       160
+weighted avg      0.975     0.975     0.975       160
+
+Matriz de confusao [[VN FP] [FN VP]]:
+[[89  2]
+ [ 2 67]]
+
+Importancia das features:
+  portas_distintas    0.258
+  na_blacklist        0.217
+  bloqueios_fw        0.164
+  web_suspeitos       0.139
+  fails_auth          0.114
+  usuarios_distintos  0.067
+  erros_web           0.041
+
+Modelo salvo em: /home/claude/w2/GS-Secura.py-SIEM-main/ml/modelo.pkl
+SHA-256: 868a44395241ee33d412843c56a4bfa4387de2425ebf6d0eab84be77a1d714bf
+
+Validacao nos logs reais (fora do treino):
+  91.240.118.172  score=100.0  -> ataque
+  45.33.32.156    score= 98.3  -> ataque
+  185.220.101.1   score= 87.3  -> ataque
+  192.168.1.10    score=  1.5  -> normal
+  192.168.1.45    score=  1.5  -> normal
+  10.0.0.5        score=  1.5  -> normal
+  192.168.1.20    score=  1.5  -> normal
